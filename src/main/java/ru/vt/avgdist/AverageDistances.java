@@ -1,4 +1,4 @@
-package ru.vt;
+package ru.vt.avgdist;
 
 import java.io.Closeable;
 import java.nio.file.Path;
