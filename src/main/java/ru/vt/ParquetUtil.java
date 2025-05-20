@@ -1,20 +1,22 @@
 package ru.vt;
 
 import org.apache.avro.generic.GenericRecord;
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.parquet.avro.AvroParquetReader;
 import org.apache.parquet.hadoop.ParquetFileReader;
 import org.apache.parquet.hadoop.metadata.BlockMetaData;
+import org.apache.parquet.hadoop.util.HadoopInputFile;
 
 import java.io.IOException;
 import java.util.List;
-
-import org.apache.hadoop.conf.Configuration;
-import org.apache.parquet.hadoop.util.HadoopInputFile;
+import java.util.Objects;
+import java.util.stream.Stream;
 
 public class ParquetUtil {
 
-    private ParquetUtil() {}
+    private ParquetUtil() {
+    }
 
     public static RideData readRideData(String filePath) throws IOException {
         Configuration conf = new Configuration();
@@ -61,5 +63,51 @@ public class ParquetUtil {
             tripDistances
         );
     }
+
+
+    public record StreamWithSize<T>(int size, Stream<T> stream) {}
+
+    public static StreamWithSize<RideItem> readRideAsStream(String filePath) throws IOException {
+        Configuration conf = new Configuration();
+        Path parquetPath = new Path(filePath);
+        var inputFile = HadoopInputFile.fromPath(parquetPath, conf);
+
+        List<BlockMetaData> blocks;
+        try (ParquetFileReader metaReader = ParquetFileReader.open(inputFile)) {
+            blocks = metaReader.getFooter().getBlocks();
+        }
+        long totalRowsLong = blocks.stream().mapToLong(BlockMetaData::getRowCount).sum();
+        int totalRows = Math.toIntExact(totalRowsLong);
+
+        var reader = AvroParquetReader.<GenericRecord>builder(inputFile).withConf(conf).build();
+        Stream<GenericRecord> stream = Stream.generate(() -> {
+                try {
+                    return reader.read();
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            })
+            .takeWhile(Objects::nonNull)
+            .onClose(() -> {
+                try {
+                    reader.close();
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            });
+
+        var result = stream.map(item -> {
+            long pickupMicros = (Long) item.get("tpep_pickup_datetime");
+            long dropoffMicros = (Long) item.get("tpep_dropoff_datetime");
+            double tripDistance = (Double) item.get("trip_distance");
+            var passCount = (Double) item.get("passenger_count");
+            int passengerCount = passCount == null ? -1 : passCount.intValue();
+
+            return new RideItem(pickupMicros, dropoffMicros, passengerCount, tripDistance);
+        });
+
+        return new StreamWithSize<>(totalRows, result);
+    }
+
 
 }

@@ -29,7 +29,7 @@ public class AverageDistancesTest {
         testTimeRanges = null;
     }
 
-    // 1591 816149800 ns
+    // 1401 472442100 ns
     @Test
     void testCalculator() {
         var start = System.nanoTime();
