@@ -1,6 +1,7 @@
 package ru.vt;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -8,7 +9,7 @@ import java.util.Set;
 /**
  * Utility class for finding differences between lists.
  */
-public class ListDiffUtil {
+public class Util {
 
     public static <T> ListDiffResult<T> diff(List<T> first, List<T> second) {
         Set<T> firstSet = new HashSet<>(first);
@@ -45,5 +46,17 @@ public class ListDiffUtil {
         }
 
         return duplicated;
+    }
+
+    public static int findFirstIndexBinarySearch(long[] array, long key) {
+        int foundIndex = Arrays.binarySearch(array, key);
+        if (foundIndex < 0) {
+            return -foundIndex - 1;
+        } else {
+            while (foundIndex > 0 && array[foundIndex - 1] == foundIndex) {
+                foundIndex--;
+            }
+            return foundIndex;
+        }
     }
 }

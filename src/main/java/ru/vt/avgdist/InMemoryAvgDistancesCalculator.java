@@ -1,5 +1,6 @@
 package ru.vt.avgdist;
 
+import ru.vt.Util;
 import ru.vt.ParquetUtil;
 import ru.vt.ParquetUtil.RideItemStream;
 import ru.vt.RideData;
@@ -141,7 +142,7 @@ public class InMemoryAvgDistancesCalculator implements AverageDistances {
 
     @Override
     public Map<Integer, Double> getAverageDistances(LocalDateTime start, LocalDateTime end) {
-        return getAverageDistances(this::fastCalc, start, end);
+        return getAverageDistances(this::cachedCalc, start, end);
     }
 
     protected Map<Integer, Double> getAverageDistances(BiFunction<LocalDateTime, LocalDateTime, RideStat> func,
@@ -327,9 +328,19 @@ public class InMemoryAvgDistancesCalculator implements AverageDistances {
 
     private void processPartialMonth(RideData monthData, long startTime, long endTime,
                                      Map<Integer, Double> totalDistance, Map<Integer, Integer> totalTravels, List<RideItem> items) {
-        for (int i = 0; i < monthData.rowCount(); i++) {
+
+        int i = 0;
+        if (monthData.pickupMicros()[0] < startTime) {
+            i = Util.findFirstIndexBinarySearch(monthData.pickupMicros(), startTime);
+        }
+
+        for (; i < monthData.rowCount(); i++) {
             long pickup = monthData.pickupMicros()[i];
             long dropoff = monthData.dropoffMicros()[i];
+
+            if (pickup > endTime) {
+                break;
+            }
 
             if (pickup >= startTime && dropoff <= endTime) {
                 int passengerCount = monthData.passengerCounts()[i];

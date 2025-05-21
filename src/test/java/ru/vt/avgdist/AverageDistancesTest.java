@@ -3,7 +3,7 @@ package ru.vt.avgdist;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-import ru.vt.ListDiffUtil;
+import ru.vt.Util;
 import ru.vt.avgdist.AvgDistancesTestData.TimeRange;
 import ru.vt.avgdist.InMemoryAvgDistancesCalculator.RideStat;
 
@@ -72,7 +72,7 @@ public class AverageDistancesTest {
                 System.out.println("Range: " + range.start().toEpochSecond(ZoneOffset.UTC) + " " + range.end().toEpochSecond(ZoneOffset.UTC));
 
                 if (items1 != null && items2 != null) {
-                    var difference = ListDiffUtil.diff(items1, items2);
+                    var difference = Util.diff(items1, items2);
 
                     System.out.println(result1.totalDistance());
                     System.out.println(result1.totalTravels());
@@ -86,8 +86,8 @@ public class AverageDistancesTest {
                     difference.onlyInSecond().stream().limit(100).forEach(System.out::println);
 
                     if (difference.onlyInFirst().isEmpty() && difference.onlyInSecond().isEmpty()) {
-                        var duplicated1 = ListDiffUtil.duplicatedEntries(items1);
-                        var duplicated2 = ListDiffUtil.duplicatedEntries(items2);
+                        var duplicated1 = Util.duplicatedEntries(items1);
+                        var duplicated2 = Util.duplicatedEntries(items2);
 
                         System.out.println("Duplicated entries in first result: " + duplicated1.size());
                         duplicated1.stream().limit(100).forEach(System.out::println);
@@ -128,7 +128,8 @@ public class AverageDistancesTest {
         System.out.println("Time: " + (end - start) + " ns");
     }
 
-    // Attempt 1: 550 661455200 ns (9.16 minutes)
+    // Attempt 1: 550 661455200 ns (9.1 minutes) - month cache
+    // Attempt 2: 502 327595600 ns (8.3 minutes) - binary search inside month
     @Test
     void testCachedCalculator() {
         int i = 0;
