@@ -1,0 +1,36 @@
+package ru.vt;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+/**
+ * Utility class for finding differences between lists.
+ */
+public class ListDiffUtil {
+
+    public static <T> ListDiffResult<T> diff(List<T> first, List<T> second) {
+        Set<T> firstSet = new HashSet<>(first);
+        Set<T> secondSet = new HashSet<>(second);
+
+        List<T> onlyInFirst = new ArrayList<>();
+        for (T item : first) {
+            if (!secondSet.contains(item)) {
+                onlyInFirst.add(item);
+            }
+        }
+
+        List<T> onlyInSecond = new ArrayList<>();
+        for (T item : second) {
+            if (!firstSet.contains(item)) {
+                onlyInSecond.add(item);
+            }
+        }
+
+        return new ListDiffResult<>(onlyInFirst, onlyInSecond);
+    }
+
+    public record ListDiffResult<T>(List<T> onlyInFirst, List<T> onlyInSecond) {
+    }
+}

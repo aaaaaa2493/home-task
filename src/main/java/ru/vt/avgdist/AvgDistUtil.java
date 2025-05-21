@@ -4,6 +4,8 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Map;
 
 public class AvgDistUtil {
 
@@ -50,6 +52,29 @@ public class AvgDistUtil {
             .withNano(0);
 
         return firstDayOfMonth.toInstant(ZoneOffset.UTC).getEpochSecond() * 1_000_000;
+    }
+
+    public static long getNextMonthTimestamp(long currentMonthTimestamp) {
+        LocalDateTime dateTime = LocalDateTime.ofEpochSecond(
+            currentMonthTimestamp / 1_000_000, 0,
+            ZoneOffset.UTC
+        );
+
+        LocalDateTime nextMonth = dateTime.plusMonths(1);
+
+        return nextMonth.toInstant(ZoneOffset.UTC).getEpochSecond() * 1_000_000;
+    }
+
+    public static Map<Integer, Double> calculateAverage(Map<Integer, Double> totalDistance,
+                                                        Map<Integer, Integer> totalTravels) {
+        Map<Integer, Double> averageByPassengerCount = new HashMap<>();
+        for (var entry : totalDistance.entrySet()) {
+            int passengerCount = entry.getKey();
+            double sum = entry.getValue();
+            int count = totalTravels.get(passengerCount);
+            averageByPassengerCount.put(passengerCount, sum / count);
+        }
+        return averageByPassengerCount;
     }
 
 }

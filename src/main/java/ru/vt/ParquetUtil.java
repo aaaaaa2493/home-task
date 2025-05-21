@@ -65,9 +65,9 @@ public class ParquetUtil {
     }
 
 
-    public record StreamWithSize<T>(int size, Stream<T> stream) {}
+    public record RideItemStream<T>(int size, Stream<T> stream, String filePath) {}
 
-    public static StreamWithSize<RideItem> readRideAsStream(String filePath) throws IOException {
+    public static RideItemStream<RideItem> readRideAsStream(String filePath) throws IOException {
         Configuration conf = new Configuration();
         Path parquetPath = new Path(filePath);
         var inputFile = HadoopInputFile.fromPath(parquetPath, conf);
@@ -106,7 +106,7 @@ public class ParquetUtil {
             return new RideItem(pickupMicros, dropoffMicros, passengerCount, tripDistance);
         });
 
-        return new StreamWithSize<>(totalRows, result);
+        return new RideItemStream<>(totalRows, result, filePath);
     }
 
 

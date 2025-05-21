@@ -23,8 +23,6 @@ public class AvgDistancesTestData {
             result.add(new TimeRange(start, end));
         }
 
-        System.out.println(Arrays.toString(testRanges));
-
         return result;
     }
 
