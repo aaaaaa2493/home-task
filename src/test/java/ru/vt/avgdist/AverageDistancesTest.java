@@ -10,6 +10,7 @@ import ru.vt.avgdist.InMemoryAvgDistancesCalculator.RideStat;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.ZoneOffset;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -74,10 +75,10 @@ public class AverageDistancesTest {
                 if (items1 != null && items2 != null) {
                     var difference = Util.diff(items1, items2);
 
-                    System.out.println(result1.totalDistance());
-                    System.out.println(result1.totalTravels());
-                    System.out.println(result2.totalDistance());
-                    System.out.println(result2.totalTravels());
+                    System.out.println(Arrays.toString(result1.totalDistance()));
+                    System.out.println(Arrays.toString(result1.totalTravels()));
+                    System.out.println(Arrays.toString(result2.totalDistance()));
+                    System.out.println(Arrays.toString(result2.totalTravels()));
 
                     System.out.println("Items only in first result: " + difference.onlyInFirst().size());
                     difference.onlyInFirst().stream().limit(100).forEach(System.out::println);
