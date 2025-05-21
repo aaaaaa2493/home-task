@@ -7,6 +7,10 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
 
+import static ru.vt.ParquetUtil.NULL_PASSENGER_COUNT;
+import static ru.vt.avgdist.InMemoryAvgDistancesCalculator.NULL_PASSENGERS_STATS_SLOT;
+import static ru.vt.avgdist.InMemoryAvgDistancesCalculator.STATS_ARRAY_SIZE;
+
 public class AvgDistUtil {
 
     public static void sortByPickupTime(long[] pickupMicros, long[] dropoffMicros,
@@ -65,13 +69,21 @@ public class AvgDistUtil {
         return nextMonth.toInstant(ZoneOffset.UTC).getEpochSecond() * 1_000_000;
     }
 
-    public static Map<Integer, Double> calculateAverage(Map<Integer, Double> totalDistance,
-                                                        Map<Integer, Integer> totalTravels) {
+    public static Map<Integer, Double> calculateAverage(double[] totalDistance, int[] totalTravels) {
+
         Map<Integer, Double> averageByPassengerCount = new HashMap<>();
-        for (var entry : totalDistance.entrySet()) {
-            int passengerCount = entry.getKey();
-            double sum = entry.getValue();
-            int count = totalTravels.get(passengerCount);
+        for (int i = 0; i < STATS_ARRAY_SIZE; i++) {
+            int passengerCount = i;
+            double sum = totalDistance[passengerCount];
+            int count = totalTravels[passengerCount];
+
+            if (count == 0) {
+                continue;
+            }
+
+            if (passengerCount == NULL_PASSENGERS_STATS_SLOT) {
+                passengerCount = NULL_PASSENGER_COUNT;
+            }
             averageByPassengerCount.put(passengerCount, sum / count);
         }
         return averageByPassengerCount;

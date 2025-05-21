@@ -19,7 +19,13 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.function.BiFunction;
 
+import static ru.vt.ParquetUtil.NULL_PASSENGER_COUNT;
+
 public class InMemoryAvgDistancesCalculator implements AverageDistances {
+
+    private static final int MAX_PASSENGERS = 15;
+    public static final int STATS_ARRAY_SIZE = MAX_PASSENGERS + 1;
+    public static final int NULL_PASSENGERS_STATS_SLOT = STATS_ARRAY_SIZE - 1; // for NULL use last place
 
     private Map<Long, RideData> perMonthMap = null;
     private Map<Long, RideStat> cachedMonthResults = null;
@@ -85,10 +91,11 @@ public class InMemoryAvgDistancesCalculator implements AverageDistances {
             double[] tripDistances = new double[monthItems.size()];
 
             var nextMonthTimestamp = AvgDistUtil.getNextMonthTimestamp(monthTimestamp);
-            Map<Integer, Double> monthTotalDistance = new HashMap<>();
-            Map<Integer, Integer> monthTotalTravels = new HashMap<>();
-            Map<Integer, Double> betweenMonthTotalDistance = new HashMap<>();
-            Map<Integer, Integer> betweenMonthTotalTravels = new HashMap<>();
+
+            double[] monthTotalDistance = new double[STATS_ARRAY_SIZE];
+            int[] monthTotalTravels = new int[STATS_ARRAY_SIZE];
+            double[] betweenMonthTotalDistance = new double[STATS_ARRAY_SIZE];
+            int[] betweenMonthTotalTravels = new int[STATS_ARRAY_SIZE];
             List<RideItem> monthRideItems = COLLECT_ITEMS ? new ArrayList<>() : null;
             List<RideItem> partialMonthRideItems = COLLECT_ITEMS ? new ArrayList<>() : null;
 
@@ -112,14 +119,12 @@ public class InMemoryAvgDistancesCalculator implements AverageDistances {
                 var item = new RideItem(pickupMicros[i], dropoffMicros[i], passengerCounts[i], tripDistances[i]);
                 if (item.pickupMicros() >= monthTimestamp) {
                     if (item.dropoffMicros() < nextMonthTimestamp) {
-                        monthTotalDistance.merge(item.passengerCounts(), item.tripDistances(), Double::sum);
-                        monthTotalTravels.merge(item.passengerCounts(), 1, Integer::sum);
+                        addStats(monthTotalDistance, monthTotalTravels, item.passengerCounts(), item.tripDistances());
                         if (COLLECT_ITEMS) {
                             monthRideItems.add(item);
                         }
                     } else {
-                        betweenMonthTotalDistance.merge(item.passengerCounts(), item.tripDistances(), Double::sum);
-                        betweenMonthTotalTravels.merge(item.passengerCounts(), 1, Integer::sum);
+                        addStats(betweenMonthTotalDistance, betweenMonthTotalTravels, item.passengerCounts(), item.tripDistances());
                         if (COLLECT_ITEMS) {
                             partialMonthRideItems.add(item);
                         }
@@ -161,9 +166,7 @@ public class InMemoryAvgDistancesCalculator implements AverageDistances {
     // used for debugging, if =false Java will eliminate dead code, so no performance hit
     private static final boolean COLLECT_ITEMS = false;
 
-    protected record RideStat(Map<Integer, Double> totalDistance,
-                              Map<Integer, Integer> totalTravels,
-                              List<RideItem> items) {};
+    protected record RideStat(double[] totalDistance, int[] totalTravels, List<RideItem> items) {};
 
 
     /// Different implementations of `getAverageDistances`
@@ -174,8 +177,8 @@ public class InMemoryAvgDistancesCalculator implements AverageDistances {
         var start = startDate.toInstant(ZoneOffset.UTC).getEpochSecond() * 1_000_000;
         var end = endDate.toInstant(ZoneOffset.UTC).getEpochSecond() * 1_000_000;
 
-        Map<Integer, Double> totalDistance = new HashMap<>();
-        Map<Integer, Integer> totalTravels = new HashMap<>();
+        double[] totalDistance = new double[STATS_ARRAY_SIZE];
+        int[] totalTravels = new int[STATS_ARRAY_SIZE];
         List<RideItem> items = COLLECT_ITEMS ? new ArrayList<>() : null;
 
         for (var rideData : perMonthMap.values()) {
@@ -187,8 +190,7 @@ public class InMemoryAvgDistancesCalculator implements AverageDistances {
                     var tripDistance = rideData.tripDistances()[i];
                     var passengerCount = rideData.passengerCounts()[i];
 
-                    totalDistance.merge(passengerCount, tripDistance, Double::sum);
-                    totalTravels.merge(passengerCount, 1, Integer::sum);
+                    addStats(totalDistance, totalTravels, passengerCount, tripDistance);
 
                     if (COLLECT_ITEMS) {
                         items.add(new RideItem(pickup, dropoff, passengerCount, tripDistance));
@@ -206,8 +208,8 @@ public class InMemoryAvgDistancesCalculator implements AverageDistances {
         long start = startDate.toInstant(ZoneOffset.UTC).getEpochSecond() * 1_000_000;
         long end = endDate.toInstant(ZoneOffset.UTC).getEpochSecond() * 1_000_000;
 
-        Map<Integer, Double> totalDistance = new HashMap<>();
-        Map<Integer, Integer> totalTravels = new HashMap<>();
+        double[] totalDistance = new double[STATS_ARRAY_SIZE];
+        int[] totalTravels = new int[STATS_ARRAY_SIZE];
         List<RideItem> items = COLLECT_ITEMS ? new ArrayList<>() : null;
 
         long startMonthTimestamp = AvgDistUtil.getStartOfMonthTimestamp(start);
@@ -228,8 +230,7 @@ public class InMemoryAvgDistancesCalculator implements AverageDistances {
                     double tripDistance = monthData.tripDistances()[i];
                     int passengerCount = monthData.passengerCounts()[i];
 
-                    totalDistance.merge(passengerCount, tripDistance, Double::sum);
-                    totalTravels.merge(passengerCount, 1, Integer::sum);
+                    addStats(totalDistance, totalTravels, passengerCount, tripDistance);
 
                     if (COLLECT_ITEMS) {
                         items.add(new RideItem(pickup, dropoff, passengerCount, tripDistance));
@@ -249,8 +250,8 @@ public class InMemoryAvgDistancesCalculator implements AverageDistances {
         long start = startDate.toInstant(ZoneOffset.UTC).getEpochSecond() * 1_000_000;
         long end = endDate.toInstant(ZoneOffset.UTC).getEpochSecond() * 1_000_000;
 
-        Map<Integer, Double> totalDistance = new HashMap<>();
-        Map<Integer, Integer> totalTravels = new HashMap<>();
+        double[] totalDistance = new double[STATS_ARRAY_SIZE];
+        int[] totalTravels = new int[STATS_ARRAY_SIZE];
         List<RideItem> items = COLLECT_ITEMS ? new ArrayList<>() : null;
 
         long startMonthTimestamp = AvgDistUtil.getStartOfMonthTimestamp(start);
@@ -306,8 +307,7 @@ public class InMemoryAvgDistancesCalculator implements AverageDistances {
                         int passengerCount = lastMonthData.passengerCounts()[i];
                         double tripDistance = lastMonthData.tripDistances()[i];
 
-                        totalDistance.merge(passengerCount, tripDistance, Double::sum);
-                        totalTravels.merge(passengerCount, 1, Integer::sum);
+                        addStats(totalDistance, totalTravels, passengerCount, tripDistance);
 
                         if (COLLECT_ITEMS) {
                             items.add(new RideItem(pickup, dropoff, passengerCount, tripDistance));
@@ -327,7 +327,7 @@ public class InMemoryAvgDistancesCalculator implements AverageDistances {
     }
 
     private void processPartialMonth(RideData monthData, long startTime, long endTime,
-                                     Map<Integer, Double> totalDistance, Map<Integer, Integer> totalTravels, List<RideItem> items) {
+                                     double[] totalDistance, int[] totalTravels, List<RideItem> items) {
 
         int i = 0;
         if (monthData.pickupMicros()[0] < startTime) {
@@ -346,8 +346,7 @@ public class InMemoryAvgDistancesCalculator implements AverageDistances {
                 int passengerCount = monthData.passengerCounts()[i];
                 double tripDistance = monthData.tripDistances()[i];
 
-                totalDistance.merge(passengerCount, tripDistance, Double::sum);
-                totalTravels.merge(passengerCount, 1, Integer::sum);
+                addStats(totalDistance, totalTravels, passengerCount, tripDistance);
 
                 if (COLLECT_ITEMS) {
                     items.add(new RideItem(pickup, dropoff, passengerCount, tripDistance));
@@ -356,13 +355,19 @@ public class InMemoryAvgDistancesCalculator implements AverageDistances {
         }
     }
 
-    private void mergeWithCached(Map<Integer, Double> totalDistance,  Map<Integer, Integer> totalTravels,
-                                 List<RideItem> items, RideStat cacheStat) {
-        for (var entry : cacheStat.totalDistance.entrySet()) {
-            totalDistance.merge(entry.getKey(), entry.getValue(), Double::sum);
+    private void addStats(double[] totalDistance, int[] totalTravels, int passengerCounts, double tripDistances) {
+        if (passengerCounts == NULL_PASSENGER_COUNT) {
+            passengerCounts = NULL_PASSENGERS_STATS_SLOT;
         }
-        for (var entry : cacheStat.totalTravels.entrySet()) {
-            totalTravels.merge(entry.getKey(), entry.getValue(), Integer::sum);
+        totalDistance[passengerCounts] += tripDistances;
+        totalTravels[passengerCounts]++;
+    }
+
+    private void mergeWithCached(double[] totalDistance, int[] totalTravels,
+                                 List<RideItem> items, RideStat cacheStat) {
+        for (var i = 0; i < STATS_ARRAY_SIZE; i++) {
+            totalDistance[i] += cacheStat.totalDistance()[i];
+            totalTravels[i] += cacheStat.totalTravels()[i];
         }
         if (COLLECT_ITEMS && cacheStat.items != null) {
             items.addAll(cacheStat.items);

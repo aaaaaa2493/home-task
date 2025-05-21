@@ -15,6 +15,8 @@ import java.util.stream.Stream;
 
 public class ParquetUtil {
 
+    public static final int NULL_PASSENGER_COUNT = -1;
+
     private ParquetUtil() {
     }
 
@@ -50,7 +52,7 @@ public class ParquetUtil {
                 tripDistances[row] = (Double) item.get("trip_distance");
 
                 var passCount = (Double) item.get("passenger_count");
-                passengerCounts[row] = passCount == null ? -1 : passCount.intValue();
+                passengerCounts[row] = passCount == null ? NULL_PASSENGER_COUNT : passCount.intValue();
 
                 row++;
             }
@@ -102,7 +104,7 @@ public class ParquetUtil {
             long dropoffMicros = (Long) item.get("tpep_dropoff_datetime");
             double tripDistance = (Double) item.get("trip_distance");
             var passCount = (Double) item.get("passenger_count");
-            int passengerCount = passCount == null ? -1 : passCount.intValue();
+            int passengerCount = passCount == null ? NULL_PASSENGER_COUNT : passCount.intValue();
 
             return new RideItem(pickupMicros, dropoffMicros, passengerCount, tripDistance);
         });

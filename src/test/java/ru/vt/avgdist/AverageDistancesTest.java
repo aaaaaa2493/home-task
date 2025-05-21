@@ -22,7 +22,7 @@ public class AverageDistancesTest {
 
     @BeforeAll
     static void setUp() {
-        testTimeRanges = AvgDistancesTestData.getTestRanges();
+        testTimeRanges = AvgDistancesTestData.getTestRanges(); // 10 000 entries
         calculator = new InMemoryAvgDistancesCalculator();
         calculator.init(Path.of("data"));
     }
@@ -103,40 +103,49 @@ public class AverageDistancesTest {
     }
 
     // 1401 472442100 ns (23 minutes)
+    // 249 768758300 ns (4.2 minutes) - array-based stats calculation
     @Test
     void testDumbCalculator() {
         int i = 0;
         var start = System.nanoTime();
         for (var range : testTimeRanges) {
             var result = calculator.getAverageDistances(calculator::dumbCalc, range.start(), range.end());
-            System.out.println((++i) + " " + result);
+            if (++i % 100 == 0) {
+                System.out.println(i + " " + result);
+            }
         }
         var end = System.nanoTime();
         System.out.println("Time: " + (end - start) + " ns");
     }
 
     // 1147 807806400 ns (19 minutes)
+    // 140 827256200 ns (2.3 minutes) - array-based stats calculation
     @Test
     void testFastCalculator() {
         int i = 0;
         var start = System.nanoTime();
         for (var range : testTimeRanges) {
             var result = calculator.getAverageDistances(calculator::fastCalc, range.start(), range.end());
-            System.out.println((++i) + " " + result);
+            if (++i % 100 == 0) {
+                System.out.println(i + " " + result);
+            }
         }
         var end = System.nanoTime();
         System.out.println("Time: " + (end - start) + " ns");
     }
 
-    // Attempt 1: 550 661455200 ns (9.1 minutes) - month cache
-    // Attempt 2: 502 327595600 ns (8.3 minutes) - binary search inside month
+    // 550 661455200 ns (9.1 minutes) - month cache
+    // 502 327595600 ns (8.3 minutes) - binary search inside month
+    // 50 754847300 ns (50 seconds)   - array-based stats calculation
     @Test
     void testCachedCalculator() {
         int i = 0;
         var start = System.nanoTime();
         for (var range : testTimeRanges) {
             var result = calculator.getAverageDistances(calculator::cachedCalc, range.start(), range.end());
-            System.out.println((++i) + " " + result);
+            if (++i % 100 == 0) {
+                System.out.println(i + " " + result);
+            }
         }
         var end = System.nanoTime();
         System.out.println("Time: " + (end - start) + " ns");
