@@ -61,7 +61,7 @@ public class AverageDistancesTest {
         int i = 0;
         for (var range : testTimeRanges) {
             var result1 = calculator.dumbCalc(range.start(), range.end());
-            var result2 = calculator.fastCalc(range.start(), range.end());
+            var result2 = calculator.cachedCalc(range.start(), range.end());
 
             try {
                 checkMaps(result1, result2);
@@ -69,15 +69,32 @@ public class AverageDistancesTest {
                 var items1 = result1.items();
                 var items2 = result2.items();
 
-                var difference = ListDiffUtil.diff(items1, items2);
-
                 System.out.println("Range: " + range.start().toEpochSecond(ZoneOffset.UTC) + " " + range.end().toEpochSecond(ZoneOffset.UTC));
 
-                System.out.println("Items only in first result: " + difference.onlyInFirst().size());
-                difference.onlyInFirst().forEach(System.out::println);
+                if (items1 != null && items2 != null) {
+                    var difference = ListDiffUtil.diff(items1, items2);
 
-                System.out.println("Items only in second result: " + difference.onlyInSecond().size());
-                difference.onlyInSecond().forEach(System.out::println);
+                    System.out.println(result1.totalDistance());
+                    System.out.println(result1.totalTravels());
+                    System.out.println(result2.totalDistance());
+                    System.out.println(result2.totalTravels());
+
+                    System.out.println("Items only in first result: " + difference.onlyInFirst().size());
+                    difference.onlyInFirst().stream().limit(100).forEach(System.out::println);
+
+                    System.out.println("Items only in second result: " + difference.onlyInSecond().size());
+                    difference.onlyInSecond().stream().limit(100).forEach(System.out::println);
+
+                    if (difference.onlyInFirst().isEmpty() && difference.onlyInSecond().isEmpty()) {
+                        var duplicated1 = ListDiffUtil.duplicatedEntries(items1);
+                        var duplicated2 = ListDiffUtil.duplicatedEntries(items2);
+
+                        System.out.println("Duplicated entries in first result: " + duplicated1.size());
+                        duplicated1.stream().limit(100).forEach(System.out::println);
+                        System.out.println("Duplicated entries in second result: " + duplicated2.size());
+                        duplicated2.stream().limit(100).forEach(System.out::println);
+                    }
+                }
 
                 throw e;
             }
@@ -88,10 +105,11 @@ public class AverageDistancesTest {
     // 1401 472442100 ns (23 minutes)
     @Test
     void testDumbCalculator() {
+        int i = 0;
         var start = System.nanoTime();
         for (var range : testTimeRanges) {
-            var result = calculator.dumbCalc(range.start(), range.end());
-            System.out.println(result);
+            var result = calculator.getAverageDistances(calculator::dumbCalc, range.start(), range.end());
+            System.out.println((++i) + " " + result);
         }
         var end = System.nanoTime();
         System.out.println("Time: " + (end - start) + " ns");
@@ -100,10 +118,24 @@ public class AverageDistancesTest {
     // 1147 807806400 ns (19 minutes)
     @Test
     void testFastCalculator() {
+        int i = 0;
         var start = System.nanoTime();
         for (var range : testTimeRanges) {
-            var result = calculator.fastCalc(range.start(), range.end());
-            System.out.println(result);
+            var result = calculator.getAverageDistances(calculator::fastCalc, range.start(), range.end());
+            System.out.println((++i) + " " + result);
+        }
+        var end = System.nanoTime();
+        System.out.println("Time: " + (end - start) + " ns");
+    }
+
+    // Attempt 1: 550 661455200 ns (9.16 minutes)
+    @Test
+    void testCachedCalculator() {
+        int i = 0;
+        var start = System.nanoTime();
+        for (var range : testTimeRanges) {
+            var result = calculator.getAverageDistances(calculator::cachedCalc, range.start(), range.end());
+            System.out.println((++i) + " " + result);
         }
         var end = System.nanoTime();
         System.out.println("Time: " + (end - start) + " ns");

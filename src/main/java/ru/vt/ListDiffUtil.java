@@ -33,4 +33,17 @@ public class ListDiffUtil {
 
     public record ListDiffResult<T>(List<T> onlyInFirst, List<T> onlyInSecond) {
     }
+
+    public static <T> List<T> duplicatedEntries(List<T> list) {
+
+        List<T> duplicated = new ArrayList<>();
+        Set<T> set = new HashSet<>();
+        for (T item : list) {
+            if (!set.add(item)) {
+                duplicated.add(item);
+            }
+        }
+
+        return duplicated;
+    }
 }

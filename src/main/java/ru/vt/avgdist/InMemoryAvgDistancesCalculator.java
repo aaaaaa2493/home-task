@@ -15,12 +15,14 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.function.BiFunction;
 
 public class InMemoryAvgDistancesCalculator implements AverageDistances {
 
     private Map<Long, RideData> perMonthMap = null;
+    private Map<Long, RideStat> cachedMonthResults = null;
+    private Map<Long, RideStat> cachedBetweenMonthResults = null;
 
     @Override
     public void init(Path dataDir) {
@@ -35,7 +37,10 @@ public class InMemoryAvgDistancesCalculator implements AverageDistances {
             for (Path file : parquetFiles) {
                 streams.add(ParquetUtil.readRideAsStream(file.toString()));
             }
+            cachedMonthResults = new HashMap<>();
+            cachedBetweenMonthResults = new HashMap<>();
             perMonthMap = createPerMonthMap(streams);
+
 
         } catch (IOException e) {
             System.err.println("IOException in directory " + dataDir + ": " + e.getMessage());
@@ -48,7 +53,7 @@ public class InMemoryAvgDistancesCalculator implements AverageDistances {
     private Map<Long, RideData> createPerMonthMap(List<RideItemStream<RideItem>> streams) {
         System.out.println("Creating per-month map");
 
-        Map<Long, List<RideItem>> perMonthMapUnsorted = new ConcurrentHashMap<>();
+        Map<Long, List<RideItem>> perMonthMapUnsorted = new ConcurrentSkipListMap<>();
 
         streams.parallelStream().forEach(stream -> {
             System.out.println("Processing file: " + stream.filePath());
@@ -78,6 +83,14 @@ public class InMemoryAvgDistancesCalculator implements AverageDistances {
             int[] passengerCounts = new int[monthItems.size()];
             double[] tripDistances = new double[monthItems.size()];
 
+            var nextMonthTimestamp = AvgDistUtil.getNextMonthTimestamp(monthTimestamp);
+            Map<Integer, Double> monthTotalDistance = new HashMap<>();
+            Map<Integer, Integer> monthTotalTravels = new HashMap<>();
+            Map<Integer, Double> betweenMonthTotalDistance = new HashMap<>();
+            Map<Integer, Integer> betweenMonthTotalTravels = new HashMap<>();
+            List<RideItem> monthRideItems = COLLECT_ITEMS ? new ArrayList<>() : null;
+            List<RideItem> partialMonthRideItems = COLLECT_ITEMS ? new ArrayList<>() : null;
+
             int i = 0;
             for (var item : monthItems) {
                 pickupMicros[i] = item.pickupMicros();
@@ -89,7 +102,37 @@ public class InMemoryAvgDistancesCalculator implements AverageDistances {
 
             AvgDistUtil.sortByPickupTime(pickupMicros, dropoffMicros, passengerCounts, tripDistances);
 
-            var monthRideData = new RideData(pickupMicros, dropoffMicros, passengerCounts, tripDistances);
+            var earliestPickupBetweenMonths = -1;
+            for (i = 0; i < pickupMicros.length; i++) {
+                if (earliestPickupBetweenMonths < 0 && dropoffMicros[i] >= nextMonthTimestamp) {
+                    earliestPickupBetweenMonths = i;
+                }
+
+                var item = new RideItem(pickupMicros[i], dropoffMicros[i], passengerCounts[i], tripDistances[i]);
+                if (item.pickupMicros() >= monthTimestamp) {
+                    if (item.dropoffMicros() < nextMonthTimestamp) {
+                        monthTotalDistance.merge(item.passengerCounts(), item.tripDistances(), Double::sum);
+                        monthTotalTravels.merge(item.passengerCounts(), 1, Integer::sum);
+                        if (COLLECT_ITEMS) {
+                            monthRideItems.add(item);
+                        }
+                    } else {
+                        betweenMonthTotalDistance.merge(item.passengerCounts(), item.tripDistances(), Double::sum);
+                        betweenMonthTotalTravels.merge(item.passengerCounts(), 1, Integer::sum);
+                        if (COLLECT_ITEMS) {
+                            partialMonthRideItems.add(item);
+                        }
+                    }
+                }
+            }
+
+            var monthStat = new RideStat(monthTotalDistance, monthTotalTravels, monthRideItems);
+            cachedMonthResults.put(monthTimestamp, monthStat);
+
+            var betweenMonthStat = new RideStat(betweenMonthTotalDistance, betweenMonthTotalTravels, partialMonthRideItems);
+            cachedBetweenMonthResults.put(monthTimestamp, betweenMonthStat);
+
+            var monthRideData = new RideData(pickupMicros, dropoffMicros, passengerCounts, tripDistances, earliestPickupBetweenMonths);
             perMonthMapSorted.put(monthTimestamp, monthRideData);
         }
 
@@ -110,8 +153,11 @@ public class InMemoryAvgDistancesCalculator implements AverageDistances {
     @Override
     public void close() {
         perMonthMap = null;
+        cachedMonthResults = null;
+        cachedBetweenMonthResults = null;
     }
 
+    // used for debugging, if =false Java will eliminate dead code, so no performance hit
     private static final boolean COLLECT_ITEMS = false;
 
     protected record RideStat(Map<Integer, Double> totalDistance,
@@ -194,6 +240,122 @@ public class InMemoryAvgDistancesCalculator implements AverageDistances {
         }
 
         return new RideStat(totalDistance, totalTravels, items);
+    }
+
+
+    protected RideStat cachedCalc(LocalDateTime startDate, LocalDateTime endDate) {
+        // assuming UTC
+        long start = startDate.toInstant(ZoneOffset.UTC).getEpochSecond() * 1_000_000;
+        long end = endDate.toInstant(ZoneOffset.UTC).getEpochSecond() * 1_000_000;
+
+        Map<Integer, Double> totalDistance = new HashMap<>();
+        Map<Integer, Integer> totalTravels = new HashMap<>();
+        List<RideItem> items = COLLECT_ITEMS ? new ArrayList<>() : null;
+
+        long startMonthTimestamp = AvgDistUtil.getStartOfMonthTimestamp(start);
+        long endMonthTimestamp = AvgDistUtil.getStartOfMonthTimestamp(end);
+
+        // dates within the same month
+        if (startMonthTimestamp == endMonthTimestamp) {
+            RideData monthData = perMonthMap.get(startMonthTimestamp);
+            if (monthData != null) {
+                processPartialMonth(monthData, start, end, totalDistance, totalTravels, items);
+            }
+            return new RideStat(totalDistance, totalTravels, items);
+        }
+
+        // 1. partial calculation for the starting month
+        RideData startMonthData = perMonthMap.get(startMonthTimestamp);
+        if (startMonthData != null) {
+            processPartialMonth(startMonthData, start, end, totalDistance, totalTravels, items);
+        }
+
+        long currentMonthTimestamp = AvgDistUtil.getNextMonthTimestamp(startMonthTimestamp);
+        long lastFullMonthTimestamp = -1;
+
+        // 2. add cached data for full months + for between full months
+        while (currentMonthTimestamp < endMonthTimestamp) {
+
+            RideStat cachedResult = cachedMonthResults.get(currentMonthTimestamp);
+            if (cachedResult != null) {
+                mergeWithCached(totalDistance, totalTravels, items, cachedResult);
+
+                if (lastFullMonthTimestamp != -1) {
+                    RideStat betweenResult = cachedBetweenMonthResults.get(lastFullMonthTimestamp);
+                    if (betweenResult != null) {
+                        mergeWithCached(totalDistance, totalTravels, items, betweenResult);
+                    }
+                }
+            }
+
+            lastFullMonthTimestamp = currentMonthTimestamp;
+            currentMonthTimestamp = AvgDistUtil.getNextMonthTimestamp(currentMonthTimestamp);
+        }
+
+        // 3. process `between month` entries of last month manually (can't use cache)
+        if (lastFullMonthTimestamp != -1) {
+            RideData lastMonthData = perMonthMap.get(lastFullMonthTimestamp);
+            if (lastMonthData != null && lastMonthData.earliestPickupBetweenMonths() >= 0) {
+                long nextMonthTimestamp = AvgDistUtil.getNextMonthTimestamp(lastFullMonthTimestamp);
+                for (int i = lastMonthData.earliestPickupBetweenMonths(); i < lastMonthData.rowCount(); i++) {
+                    long pickup = lastMonthData.pickupMicros()[i];
+                    long dropoff = lastMonthData.dropoffMicros()[i];
+
+                    if (pickup >= lastFullMonthTimestamp && dropoff >= nextMonthTimestamp && dropoff <= end) {
+                        int passengerCount = lastMonthData.passengerCounts()[i];
+                        double tripDistance = lastMonthData.tripDistances()[i];
+
+                        totalDistance.merge(passengerCount, tripDistance, Double::sum);
+                        totalTravels.merge(passengerCount, 1, Integer::sum);
+
+                        if (COLLECT_ITEMS) {
+                            items.add(new RideItem(pickup, dropoff, passengerCount, tripDistance));
+                        }
+                    }
+                }
+            }
+        }
+
+        // 4. partial calculation for the ending month
+        RideData endMonthData = perMonthMap.get(endMonthTimestamp);
+        if (endMonthData != null) {
+            processPartialMonth(endMonthData, endMonthTimestamp, end, totalDistance, totalTravels, items);
+        }
+
+        return new RideStat(totalDistance, totalTravels, items);
+    }
+
+    private void processPartialMonth(RideData monthData, long startTime, long endTime,
+                                     Map<Integer, Double> totalDistance, Map<Integer, Integer> totalTravels, List<RideItem> items) {
+        for (int i = 0; i < monthData.rowCount(); i++) {
+            long pickup = monthData.pickupMicros()[i];
+            long dropoff = monthData.dropoffMicros()[i];
+
+            if (pickup >= startTime && dropoff <= endTime) {
+                int passengerCount = monthData.passengerCounts()[i];
+                double tripDistance = monthData.tripDistances()[i];
+
+                totalDistance.merge(passengerCount, tripDistance, Double::sum);
+                totalTravels.merge(passengerCount, 1, Integer::sum);
+
+                if (COLLECT_ITEMS) {
+                    items.add(new RideItem(pickup, dropoff, passengerCount, tripDistance));
+                }
+            }
+        }
+    }
+
+    private void mergeWithCached(Map<Integer, Double> totalDistance,  Map<Integer, Integer> totalTravels,
+                                 List<RideItem> items, RideStat cacheStat) {
+        for (var entry : cacheStat.totalDistance.entrySet()) {
+            totalDistance.merge(entry.getKey(), entry.getValue(), Double::sum);
+        }
+        for (var entry : cacheStat.totalTravels.entrySet()) {
+            totalTravels.merge(entry.getKey(), entry.getValue(), Integer::sum);
+        }
+        if (COLLECT_ITEMS && cacheStat.items != null) {
+            items.addAll(cacheStat.items);
+        }
     }
 
 }
