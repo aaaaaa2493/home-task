@@ -4,8 +4,7 @@ public record RideData(
     long[] pickupMicros,
     long[] dropoffMicros,
     int[] passengerCounts,
-    double[] tripDistances,
-    int earliestPickupBetweenMonths
+    double[] tripDistances
 ) {
     public int rowCount() {
         return pickupMicros.length;

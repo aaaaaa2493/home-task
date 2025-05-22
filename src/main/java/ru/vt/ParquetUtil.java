@@ -62,8 +62,7 @@ public class ParquetUtil {
             pickupMicros,
             dropoffMicros,
             passengerCounts,
-            tripDistances,
-            -1
+            tripDistances
         );
     }
 
