@@ -69,6 +69,32 @@ public class AvgDistUtil {
         return nextMonth.toInstant(ZoneOffset.UTC).getEpochSecond() * 1_000_000;
     }
 
+    public static long getStartOfDayTimestamp(long timestampMicros) {
+        LocalDateTime dateTime = LocalDateTime.ofEpochSecond(
+            timestampMicros / 1_000_000, 0,
+            ZoneOffset.UTC
+        );
+
+        LocalDateTime startOfDay = dateTime
+            .withHour(0)
+            .withMinute(0)
+            .withSecond(0)
+            .withNano(0);
+
+        return startOfDay.toInstant(ZoneOffset.UTC).getEpochSecond() * 1_000_000;
+    }
+
+    public static long getNextDayTimestamp(long currentDayTimestamp) {
+        LocalDateTime dateTime = LocalDateTime.ofEpochSecond(
+            currentDayTimestamp / 1_000_000, 0,
+            ZoneOffset.UTC
+        );
+
+        LocalDateTime nextDay = dateTime.plusDays(1);
+
+        return nextDay.toInstant(ZoneOffset.UTC).getEpochSecond() * 1_000_000;
+    }
+
     public static Map<Integer, Double> calculateAverage(double[] totalDistance, int[] totalTravels) {
 
         Map<Integer, Double> averageByPassengerCount = new HashMap<>();

@@ -53,7 +53,7 @@ public class Util {
         if (foundIndex < 0) {
             return -foundIndex - 1;
         } else {
-            while (foundIndex > 0 && array[foundIndex - 1] == foundIndex) {
+            while (foundIndex > 0 && array[foundIndex - 1] == key) {
                 foundIndex--;
             }
             return foundIndex;

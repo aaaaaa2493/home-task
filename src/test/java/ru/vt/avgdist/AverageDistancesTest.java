@@ -121,6 +121,7 @@ public class AverageDistancesTest {
 
     // 1147 807806400 ns (19 minutes)
     // 140 827256200 ns (2.3 minutes) - array-based stats calculation
+    // 125 568455900 ns (2.1 minutes) - binary search inside month
     @Test
     void testFastCalculator() {
         int i = 0;
@@ -138,6 +139,7 @@ public class AverageDistancesTest {
     // 550 661455200 ns (9.1 minutes) - month cache
     // 502 327595600 ns (8.3 minutes) - binary search inside month
     // 50 754847300 ns (50 seconds)   - array-based stats calculation
+    // 7  579402600 ns (7-10 seconds) - day cache
     @Test
     void testCachedCalculator() {
         int i = 0;
