@@ -49,6 +49,10 @@ public class Util {
     }
 
     public static int findFirstIndexBinarySearch(long[] array, long key) {
+        if (array[0] >= key) {
+            return 0;
+        }
+
         int foundIndex = Arrays.binarySearch(array, key);
         if (foundIndex < 0) {
             return -foundIndex - 1;
