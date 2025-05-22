@@ -315,7 +315,6 @@ public class InMemoryAvgDistancesCalculator implements AverageDistances {
             return stats;
         }
 
-        // 1. manual calculation for the starting month
         if (start > startMonthTimestamp) {
             var nextMonth = AvgDistUtil.getNextMonthTimestamp(startMonthTimestamp);
             RideData startMonthData = perMonthMap.get(startMonthTimestamp);
@@ -326,9 +325,10 @@ public class InMemoryAvgDistancesCalculator implements AverageDistances {
         processFullPeriods(cachedMonthResults, cachedBetweenMonthResults, startMonthTimestamp, endMonthTimestamp,
             AvgDistUtil::getNextMonthTimestamp, stats, start, end, t -> perMonthMap.get(t));
 
-        // 4. manual calculation for the ending month
-        RideData endMonthData = perMonthMap.get(endMonthTimestamp);
-        processMonth(endMonthData, endMonthTimestamp, end, end, stats);
+        if (end > endMonthTimestamp) {
+            RideData endMonthData = perMonthMap.get(endMonthTimestamp);
+            processMonth(endMonthData, endMonthTimestamp, end, end, stats);
+        }
 
         return stats;
     }
@@ -347,7 +347,6 @@ public class InMemoryAvgDistancesCalculator implements AverageDistances {
             return;
         }
 
-        // 1. manual calculation for the starting day
         if (start > startDayTimestamp) {
             long nextDay = AvgDistUtil.getNextDayTimestamp(startDayTimestamp);
             processData(monthData, start, end, nextDay - 1, stats);
@@ -357,7 +356,6 @@ public class InMemoryAvgDistancesCalculator implements AverageDistances {
         processFullPeriods(cachedDayResults, cachedBetweenDayResults, startDayTimestamp, endDayTimestamp,
             AvgDistUtil::getNextDayTimestamp, stats, start, end, t -> monthData);
 
-        // 4. manual calculation for the ending day
         if (end > endDayTimestamp) {
             processData(monthData, endDayTimestamp, end, end, stats);
         }
