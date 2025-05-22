@@ -67,7 +67,8 @@ public class InMemoryAvgDistancesCalculator implements AverageDistances {
             cachedBetweenMonthResults = new HashMap<>();
             cachedDayResults = new HashMap<>();
             cachedBetweenDayResults = new HashMap<>();
-            perMonthMap = createPerMonthMap(streams);
+            perMonthMap = new HashMap<>();
+            processRideData(streams);
 
 
         } catch (IOException e) {
@@ -75,11 +76,8 @@ public class InMemoryAvgDistancesCalculator implements AverageDistances {
         }
     }
 
-    /**
-     * @return Per-month map of RideData objects. RideData objects are sorted by pickup time.
-     */
-    private Map<Long, RideData> createPerMonthMap(List<RideItemStream<RideItem>> streams) {
-        System.out.println("Creating per-month map");
+    private void processRideData(List<RideItemStream<RideItem>> streams) {
+        System.out.println("Processing ride data");
 
         Map<Long, List<RideItem>> perMonthMapUnsorted = new ConcurrentSkipListMap<>();
 
@@ -98,13 +96,6 @@ public class InMemoryAvgDistancesCalculator implements AverageDistances {
             stream.stream().close();
         });
 
-        Map<Long, RideData> perMonthMapSorted = new HashMap<>();
-
-        long startOfDayTimestamp = -1;
-        long nextDayTimestamp = -1;
-        int earliestPickupBetweenDays = -1;
-        int startDayIndex = -1;
-
         // Sort by small amounts to preserve memory, since sorting
         // in my implementation (AvgDistUtil.sortByPickupTime) requires creating temporary arrays
         for (var entry : perMonthMapUnsorted.entrySet()) {
@@ -115,15 +106,6 @@ public class InMemoryAvgDistancesCalculator implements AverageDistances {
             long[] dropoffMicros = new long[monthItems.size()];
             int[] passengerCounts = new int[monthItems.size()];
             double[] tripDistances = new double[monthItems.size()];
-
-            var nextMonthTimestamp = AvgDistUtil.getNextMonthTimestamp(monthTimestamp);
-
-            var monthStats = RideStat.emptyStats();
-            var betweenMonthStats = RideStat.emptyStats();
-            var dayStats = RideStat.emptyStats();
-            var betweenDayStats = RideStat.emptyStats();
-
-            List<Integer> threePlusDaysRideItems = new ArrayList<>();
 
             int i = 0;
             for (var item : monthItems) {
@@ -136,96 +118,115 @@ public class InMemoryAvgDistancesCalculator implements AverageDistances {
 
             AvgDistUtil.sortByPickupTime(pickupMicros, dropoffMicros, passengerCounts, tripDistances);
 
-            var earliestPickupBetweenMonths = -1;
-            for (i = 0; i < pickupMicros.length; i++) {
-                if (earliestPickupBetweenMonths < 0 && dropoffMicros[i] >= nextMonthTimestamp) {
-                    earliestPickupBetweenMonths = i;
-                }
+            populateCaches(monthTimestamp, pickupMicros, dropoffMicros, passengerCounts, tripDistances);
+        }
+    }
 
-                if (pickupMicros[i] >= monthTimestamp) {
-                    if (dropoffMicros[i] < nextMonthTimestamp) {
-                        addStats(monthStats, passengerCounts[i], tripDistances[i]);
-                        if (DEBUG_COLLECT_ITEMS) {
-                            var item = new RideItem(pickupMicros[i], dropoffMicros[i], passengerCounts[i], tripDistances[i]);
-                            monthStats.items.add(item);
-                        }
-                    } else {
-                        addStats(betweenMonthStats, passengerCounts[i], tripDistances[i]);
-                        if (DEBUG_COLLECT_ITEMS) {
-                            var item = new RideItem(pickupMicros[i], dropoffMicros[i], passengerCounts[i], tripDistances[i]);
-                            betweenMonthStats.items.add(item);
-                        }
-                    }
-                }
+    private void populateCaches(Long monthTimestamp, long[] pickupMicros, long[] dropoffMicros,
+                                int[] passengerCounts, double[] tripDistances) {
+
+        long startOfDayTimestamp = -1;
+        long nextDayTimestamp = -1;
+        int earliestPickupBetweenDays = -1;
+        int startDayIndex = -1;
+
+        var nextMonthTimestamp = AvgDistUtil.getNextMonthTimestamp(monthTimestamp);
+
+        var monthStats = RideStat.emptyStats();
+        var betweenMonthStats = RideStat.emptyStats();
+        var dayStats = RideStat.emptyStats();
+        var betweenDayStats = RideStat.emptyStats();
+
+        List<Integer> threePlusDaysRideItems = new ArrayList<>();
 
 
-                if (startOfDayTimestamp == -1) {
-                    startDayIndex = i;
-                    earliestPickupBetweenDays = -1;
-                    startOfDayTimestamp = AvgDistUtil.getStartOfDayTimestamp(pickupMicros[i]);
-                    nextDayTimestamp = AvgDistUtil.getNextDayTimestamp(startOfDayTimestamp);
-                }
+        var earliestPickupBetweenMonths = -1;
+        for (int i = 0; i < pickupMicros.length; i++) {
+            if (earliestPickupBetweenMonths < 0 && dropoffMicros[i] >= nextMonthTimestamp) {
+                earliestPickupBetweenMonths = i;
+            }
 
-                if (pickupMicros[i] >= nextDayTimestamp) {
-                    var dayStat = new DayRideStat(dayStats.totalDistance, dayStats.totalTravels, dayStats.items,
-                                                  startDayIndex, i - 1, earliestPickupBetweenDays,
-                                                  Util.toIntArray(threePlusDaysRideItems));
-                    cachedDayResults.put(startOfDayTimestamp, dayStat);
-                    cachedBetweenDayResults.put(startOfDayTimestamp, betweenDayStats);
-
-                    startDayIndex = i;
-                    earliestPickupBetweenDays = -1;
-                    startOfDayTimestamp = AvgDistUtil.getStartOfDayTimestamp(pickupMicros[i]);
-                    nextDayTimestamp = AvgDistUtil.getNextDayTimestamp(startOfDayTimestamp);
-
-                    dayStats = RideStat.emptyStats();
-                    betweenDayStats = RideStat.emptyStats();
-                    threePlusDaysRideItems = new ArrayList<>();
-                }
-
-                if (dropoffMicros[i] < nextDayTimestamp) {
-                    addStats(dayStats, passengerCounts[i], tripDistances[i]);
+            if (pickupMicros[i] >= monthTimestamp) {
+                if (dropoffMicros[i] < nextMonthTimestamp) {
+                    addStats(monthStats, passengerCounts[i], tripDistances[i]);
                     if (DEBUG_COLLECT_ITEMS) {
                         var item = new RideItem(pickupMicros[i], dropoffMicros[i], passengerCounts[i], tripDistances[i]);
-                        dayStats.items.add(item);
+                        monthStats.items.add(item);
                     }
-
                 } else {
-                    if (earliestPickupBetweenDays < 0) {
-                        earliestPickupBetweenDays = i;
-                    }
-
-                    var nextNextDayTimestamp = AvgDistUtil.getNextDayTimestamp(nextDayTimestamp);
-
-                    if (dropoffMicros[i] < nextNextDayTimestamp) {
-                        addStats(betweenDayStats, passengerCounts[i], tripDistances[i]);
-                        if (DEBUG_COLLECT_ITEMS) {
-                            var item = new RideItem(pickupMicros[i], dropoffMicros[i], passengerCounts[i], tripDistances[i]);
-                            betweenDayStats.items.add(item);
-                        }
-
-                    } else {
-                        threePlusDaysRideItems.add(i);
+                    addStats(betweenMonthStats, passengerCounts[i], tripDistances[i]);
+                    if (DEBUG_COLLECT_ITEMS) {
+                        var item = new RideItem(pickupMicros[i], dropoffMicros[i], passengerCounts[i], tripDistances[i]);
+                        betweenMonthStats.items.add(item);
                     }
                 }
             }
 
-            if (startOfDayTimestamp != -1) {
+
+            if (startOfDayTimestamp == -1) {
+                startDayIndex = i;
+                earliestPickupBetweenDays = -1;
+                startOfDayTimestamp = AvgDistUtil.getStartOfDayTimestamp(pickupMicros[i]);
+                nextDayTimestamp = AvgDistUtil.getNextDayTimestamp(startOfDayTimestamp);
+            }
+
+            if (pickupMicros[i] >= nextDayTimestamp) {
                 var dayStat = new DayRideStat(dayStats.totalDistance, dayStats.totalTravels, dayStats.items,
-                    startDayIndex, pickupMicros.length - 1, earliestPickupBetweenDays,
+                    startDayIndex, i - 1, earliestPickupBetweenDays,
                     Util.toIntArray(threePlusDaysRideItems));
                 cachedDayResults.put(startOfDayTimestamp, dayStat);
                 cachedBetweenDayResults.put(startOfDayTimestamp, betweenDayStats);
+
+                startDayIndex = i;
+                earliestPickupBetweenDays = -1;
+                startOfDayTimestamp = AvgDistUtil.getStartOfDayTimestamp(pickupMicros[i]);
+                nextDayTimestamp = AvgDistUtil.getNextDayTimestamp(startOfDayTimestamp);
+
+                dayStats = RideStat.emptyStats();
+                betweenDayStats = RideStat.emptyStats();
+                threePlusDaysRideItems = new ArrayList<>();
             }
 
-            cachedMonthResults.put(monthTimestamp, monthStats);
-            cachedBetweenMonthResults.put(monthTimestamp, betweenMonthStats);
+            if (dropoffMicros[i] < nextDayTimestamp) {
+                addStats(dayStats, passengerCounts[i], tripDistances[i]);
+                if (DEBUG_COLLECT_ITEMS) {
+                    var item = new RideItem(pickupMicros[i], dropoffMicros[i], passengerCounts[i], tripDistances[i]);
+                    dayStats.items.add(item);
+                }
 
-            var monthRideData = new RideData(pickupMicros, dropoffMicros, passengerCounts, tripDistances, earliestPickupBetweenMonths);
-            perMonthMapSorted.put(monthTimestamp, monthRideData);
+            } else {
+                if (earliestPickupBetweenDays < 0) {
+                    earliestPickupBetweenDays = i;
+                }
+
+                var nextNextDayTimestamp = AvgDistUtil.getNextDayTimestamp(nextDayTimestamp);
+
+                if (dropoffMicros[i] < nextNextDayTimestamp) {
+                    addStats(betweenDayStats, passengerCounts[i], tripDistances[i]);
+                    if (DEBUG_COLLECT_ITEMS) {
+                        var item = new RideItem(pickupMicros[i], dropoffMicros[i], passengerCounts[i], tripDistances[i]);
+                        betweenDayStats.items.add(item);
+                    }
+
+                } else {
+                    threePlusDaysRideItems.add(i);
+                }
+            }
         }
 
-        return perMonthMapSorted;
+        if (startOfDayTimestamp != -1) {
+            var dayStat = new DayRideStat(dayStats.totalDistance, dayStats.totalTravels, dayStats.items,
+                startDayIndex, pickupMicros.length - 1, earliestPickupBetweenDays,
+                Util.toIntArray(threePlusDaysRideItems));
+            cachedDayResults.put(startOfDayTimestamp, dayStat);
+            cachedBetweenDayResults.put(startOfDayTimestamp, betweenDayStats);
+        }
+
+        cachedMonthResults.put(monthTimestamp, monthStats);
+        cachedBetweenMonthResults.put(monthTimestamp, betweenMonthStats);
+
+        var monthRideData = new RideData(pickupMicros, dropoffMicros, passengerCounts, tripDistances, earliestPickupBetweenMonths);
+        perMonthMap.put(monthTimestamp, monthRideData);
     }
 
     @Override
