@@ -9,10 +9,12 @@ import ru.vt.avgdist.InMemoryAvgDistancesCalculator.RideStat;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiFunction;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -58,11 +60,22 @@ public class AverageDistancesTest {
     }
 
     @Test
-    void testSameResults() {
+    void testSameResultsDumbAndFast() {
+        compareSolutions(calculator::dumbCalc, calculator::fastCalc);
+    }
+
+    @Test
+    void testSameResultsDumbAndCached() {
+        compareSolutions(calculator::dumbCalc, calculator::cachedCalc);
+    }
+
+    private void compareSolutions(BiFunction<LocalDateTime, LocalDateTime, RideStat> firstSolution,
+                                  BiFunction<LocalDateTime, LocalDateTime, RideStat> secondSolution) {
+
         int i = 0;
         for (var range : testTimeRanges) {
-            var result1 = calculator.dumbCalc(range.start(), range.end());
-            var result2 = calculator.cachedCalc(range.start(), range.end());
+            var result1 = firstSolution.apply(range.start(), range.end());
+            var result2 = secondSolution.apply(range.start(), range.end());
 
             try {
                 checkMaps(result1, result2);
@@ -101,6 +114,7 @@ public class AverageDistancesTest {
             }
             System.out.println((++i) + " " + AvgDistUtil.calculateAverage(result1.totalDistance(), result1.totalTravels()));
         }
+
     }
 
     // 1401 472442100 ns (23 minutes)
